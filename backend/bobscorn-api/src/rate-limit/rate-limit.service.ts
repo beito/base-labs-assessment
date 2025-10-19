@@ -29,6 +29,10 @@ export class RateLimitService {
     return { ...bucket, tokens, lastRefillMs: now };
   }
 
+  async getBucket(clientId: string): Promise<ClientBucket | undefined> {
+    return this.store.get(clientId);
+  }
+
   async tryConsume(clientId: string): Promise<TryConsumeResult> {
     const initial: ClientBucket = {
       tokens: this.capacity,
