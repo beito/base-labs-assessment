@@ -1,0 +1,58 @@
+# compiled output (en cualquier carpeta)
+dist/
+build/
+
+# Node (en cualquier carpeta)
+node_modules/
+
+# Logs
+logs
+*.log
+npm-debug.log*
+pnpm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+lerna-debug.log*
+
+# OS
+.DS_Store
+
+# Tests
+coverage/
+.nyc_output/
+
+# IDEs and editors
+.idea/
+.project
+.classpath
+.c9/
+*.launch
+.settings/
+*.sublime-workspace
+
+# VSCode (cualquier .vscode/) excepto archivos útiles si los usás
+.vscode/*
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+
+# dotenv
+.env
+.env.development.local
+.env.test.local
+.env.production.local
+.env.local
+
+# temp
+.temp/
+.tmp/
+
+# Runtime data
+pids
+*.pid
+*.seed
+*.pid.lock
+
+# Diagnostic reports
+report.[0-9]*.[0-9]*.[0-9]*.[0-9]*.json
