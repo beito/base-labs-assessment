@@ -8,11 +8,23 @@ import {
   Inject,
   BadRequestException,
 } from '@nestjs/common';
-import express from 'express';
+import type { Request, Response } from 'express';
+import { ApiTags, ApiOperation, ApiResponse, ApiHeader } from '@nestjs/swagger';
 import { RateLimitService } from '../rate-limit/rate-limit.service';
 import { IdempotencyService } from '../common/idempotency/idempotency.service';
 import type { ClientBucket } from '../rate-limit/domain/store.interface';
 
+@ApiTags('Purchases')
+@ApiHeader({
+  name: 'x-client-id',
+  required: true,
+  description: 'Unique client identifier',
+})
+@ApiHeader({
+  name: 'idempotency-key',
+  required: false,
+  description: 'Prevents double processing (optional)',
+})
 @Controller('api')
 export class PurchasesController {
   constructor(
@@ -21,7 +33,7 @@ export class PurchasesController {
     private readonly idempotency: IdempotencyService,
   ) {}
 
-  private getClientId(req: express.Request): string {
+  private getClientId(req: Request): string {
     const raw = req.headers['x-client-id'];
     const value = Array.isArray(raw) ? raw[0] : raw;
     const id = typeof value === 'string' ? value.trim() : '';
@@ -29,17 +41,38 @@ export class PurchasesController {
     return id;
   }
 
-  @Post('buy')
-  async buy(@Req() req: express.Request, @Res() res: express.Response) {
-    const keyHeader = req.headers['idempotency-key'];
-    const key = Array.isArray(keyHeader) ? keyHeader[0] : keyHeader;
-    const idem = typeof key === 'string' && key.trim() ? key.trim() : undefined;
+  private getIdempotencyKey(req: Request): string | undefined {
+    const raw = req.headers['idempotency-key'];
+    const value = Array.isArray(raw) ? raw[0] : raw;
+    const key = typeof value === 'string' ? value.trim() : '';
+    return key || undefined;
+  }
 
+  @ApiOperation({ summary: 'Buy one corn (rate limit: 1 per minute)' })
+  @ApiResponse({
+    status: 200,
+    description: 'Purchase successful',
+    schema: {
+      example: { ok: true, message: 'Bought successfully!', totalBought: 1 },
+    },
+  })
+  @ApiResponse({
+    status: 429,
+    description: 'Rate limit exceeded',
+    schema: {
+      example: {
+        ok: false,
+        message: 'Too many requests — wait a bit!',
+        retryAfterSeconds: 42,
+      },
+    },
+  })
+  @Post('buy')
+  async buy(@Req() req: Request, @Res() res: Response) {
+    const idem = this.getIdempotencyKey(req);
     if (idem) {
       const cached = this.idempotency.get(idem);
-      if (cached) {
-        return res.status(cached.status).json(cached.body);
-      }
+      if (cached) return res.status(cached.status).json(cached.body);
     }
 
     const clientId = this.getClientId(req);
@@ -63,15 +96,16 @@ export class PurchasesController {
           retryAfterSeconds,
         };
 
-    if (idem && status === HttpStatus.OK) {
+    if (idem && status === HttpStatus.OK)
       this.idempotency.set(idem, status, body);
-    }
 
     return res.status(status).json(body);
   }
 
+  @ApiOperation({ summary: 'Get total corns bought by this client' })
+  @ApiResponse({ status: 200, schema: { example: { totalBought: 3 } } })
   @Get('me')
-  async me(@Req() req: express.Request) {
+  async me(@Req() req: Request) {
     const clientId = this.getClientId(req);
     const bucket: ClientBucket | undefined =
       await this.rateLimit.getBucket(clientId);
