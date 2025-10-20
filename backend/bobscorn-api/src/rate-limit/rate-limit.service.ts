@@ -12,7 +12,6 @@ type TryConsumeResult = {
 export class RateLimitService {
   private readonly capacity = 1;
   private readonly refillPerMinute = 1;
-
   constructor(
     @Inject(RATE_LIMIT_STORE) private readonly store: IRateLimitStore,
   ) {}
@@ -27,10 +26,6 @@ export class RateLimitService {
     const tokensToAdd = (elapsedMs / 60000) * this.refillPerMinute;
     const tokens = Math.min(this.capacity, bucket.tokens + tokensToAdd);
     return { ...bucket, tokens, lastRefillMs: now };
-  }
-
-  async getBucket(clientId: string): Promise<ClientBucket | undefined> {
-    return this.store.get(clientId);
   }
 
   async tryConsume(clientId: string): Promise<TryConsumeResult> {
@@ -52,11 +47,16 @@ export class RateLimitService {
       await this.store.set(clientId, updated);
       return { allowed: true, retryAfterSeconds: 0, bucket: updated };
     }
+
     const tokensNeeded = 1 - refilled.tokens;
     const minutesUntilNext = tokensNeeded / this.refillPerMinute;
     const retryAfterSeconds = Math.ceil(minutesUntilNext * 60);
 
     await this.store.set(clientId, refilled);
     return { allowed: false, retryAfterSeconds, bucket: refilled };
+  }
+
+  async getBucket(clientId: string): Promise<ClientBucket | undefined> {
+    return this.store.get(clientId);
   }
 }

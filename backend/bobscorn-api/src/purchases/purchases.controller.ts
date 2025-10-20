@@ -31,9 +31,12 @@ export class PurchasesController {
 
   @Post('buy')
   async buy(@Req() req: express.Request, @Res() res: express.Response) {
-    const key = req.headers['idempotency-key']?.toString();
-    if (key) {
-      const cached = this.idempotency.get(key);
+    const keyHeader = req.headers['idempotency-key'];
+    const key = Array.isArray(keyHeader) ? keyHeader[0] : keyHeader;
+    const idem = typeof key === 'string' && key.trim() ? key.trim() : undefined;
+
+    if (idem) {
+      const cached = this.idempotency.get(idem);
       if (cached) {
         return res.status(cached.status).json(cached.body);
       }
@@ -48,7 +51,6 @@ export class PurchasesController {
     if (!allowed) res.setHeader('Retry-After', String(retryAfterSeconds));
 
     const status = allowed ? HttpStatus.OK : HttpStatus.TOO_MANY_REQUESTS;
-
     const body = allowed
       ? {
           ok: true,
@@ -61,8 +63,8 @@ export class PurchasesController {
           retryAfterSeconds,
         };
 
-    if (key) {
-      this.idempotency.set(key, status, body);
+    if (idem && status === HttpStatus.OK) {
+      this.idempotency.set(idem, status, body);
     }
 
     return res.status(status).json(body);
