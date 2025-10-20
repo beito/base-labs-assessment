@@ -10,12 +10,15 @@ import {
 } from '@nestjs/common';
 import express from 'express';
 import { RateLimitService } from '../rate-limit/rate-limit.service';
+import { IdempotencyService } from '../common/idempotency/idempotency.service';
 import type { ClientBucket } from '../rate-limit/domain/store.interface';
 
 @Controller('api')
 export class PurchasesController {
   constructor(
-    @Inject(RateLimitService) private readonly rateLimit: RateLimitService,
+    @Inject(RateLimitService)
+    private readonly rateLimit: RateLimitService,
+    private readonly idempotency: IdempotencyService,
   ) {}
 
   private getClientId(req: express.Request): string {
@@ -28,6 +31,14 @@ export class PurchasesController {
 
   @Post('buy')
   async buy(@Req() req: express.Request, @Res() res: express.Response) {
+    const key = req.headers['idempotency-key']?.toString();
+    if (key) {
+      const cached = this.idempotency.get(key);
+      if (cached) {
+        return res.status(cached.status).json(cached.body);
+      }
+    }
+
     const clientId = this.getClientId(req);
     const { allowed, retryAfterSeconds, bucket } =
       await this.rateLimit.tryConsume(clientId);
@@ -36,18 +47,25 @@ export class PurchasesController {
     res.setHeader('X-RateLimit-Remaining', String(Math.floor(bucket.tokens)));
     if (!allowed) res.setHeader('Retry-After', String(retryAfterSeconds));
 
-    if (allowed) {
-      return res.status(HttpStatus.OK).json({
-        ok: true,
-        message: '🌽 Bought successfully!',
-        totalBought: bucket.totalBought,
-      });
+    const status = allowed ? HttpStatus.OK : HttpStatus.TOO_MANY_REQUESTS;
+
+    const body = allowed
+      ? {
+          ok: true,
+          message: 'Bought successfully!',
+          totalBought: bucket.totalBought,
+        }
+      : {
+          ok: false,
+          message: 'Too many requests — wait a bit!',
+          retryAfterSeconds,
+        };
+
+    if (key) {
+      this.idempotency.set(key, status, body);
     }
-    return res.status(HttpStatus.TOO_MANY_REQUESTS).json({
-      ok: false,
-      message: 'Too many requests — wait a bit!',
-      retryAfterSeconds,
-    });
+
+    return res.status(status).json(body);
   }
 
   @Get('me')
