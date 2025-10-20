@@ -1,7 +1,27 @@
 services:
+  api:
+    build:
+      context: ./backend/bobscorn-api
+    ports:
+      - "3000:3000"
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      # memory consumption; RATE_STORE=redis
+      RATE_STORE: ${RATE_STORE:-memory}
+      REDIS_URL: redis://redis:6379
+    depends_on:
+      redis:
+        condition: service_healthy
+
   redis:
     image: redis:7-alpine
     container_name: bobscorn-redis
     ports:
       - "6379:6379"
     command: ["redis-server", "--save", "", "--appendonly", "no"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
