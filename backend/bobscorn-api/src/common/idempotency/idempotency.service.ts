@@ -1,28 +1,68 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Inject } from '@nestjs/common';
+import type { Redis } from 'ioredis';
+import { REDIS_CLIENT } from '../../rate-limit/rate-limit.providers';
 
-interface CachedResponse {
+export interface IdempotencyEntry {
   status: number;
-  body: any;
-  createdAt: number;
+  body: unknown;
+  at: number;
+}
+
+function isIdempotencyEntry(x: unknown): x is IdempotencyEntry {
+  if (x === null || typeof x !== 'object') return false;
+  const r = x as Record<string, unknown>;
+  return (
+    typeof r.status === 'number' &&
+    'body' in r && // puede ser cualquier cosa (unknown)
+    typeof r.at === 'number'
+  );
 }
 
 @Injectable()
 export class IdempotencyService {
-  private readonly ttlMs = 60_000;
-  private readonly cache = new Map<string, CachedResponse>();
+  private readonly map = new Map<string, IdempotencyEntry>();
 
-  get(key: string): CachedResponse | undefined {
-    const cached = this.cache.get(key);
-    if (!cached) return;
-    const age = Date.now() - cached.createdAt;
-    if (age > this.ttlMs) {
-      this.cache.delete(key);
-      return;
-    }
-    return cached;
+  constructor(@Inject(REDIS_CLIENT) private readonly redis: Redis | null) {}
+
+  private key(id: string) {
+    return `corn:idemp:${id}`;
   }
 
-  set(key: string, status: number, body: any) {
-    this.cache.set(key, { status, body, createdAt: Date.now() });
+  async get(key: string): Promise<IdempotencyEntry | undefined> {
+    if (this.redis) {
+      const txt = await this.redis.get(this.key(key));
+      if (!txt) return undefined;
+
+      let parsed: unknown;
+      try {
+        parsed = JSON.parse(txt);
+      } catch {
+        return undefined;
+      }
+      return isIdempotencyEntry(parsed) ? parsed : undefined;
+    }
+    return this.map.get(key);
+  }
+
+  async set(
+    key: string,
+    status: number,
+    body: unknown,
+    ttlSec = 60,
+  ): Promise<void> {
+    const payload: IdempotencyEntry = { status, body, at: Date.now() };
+
+    if (this.redis) {
+      await this.redis.set(
+        this.key(key),
+        JSON.stringify(payload),
+        'EX',
+        ttlSec,
+      );
+      return;
+    }
+
+    this.map.set(key, payload);
+    setTimeout(() => this.map.delete(key), ttlSec * 1000);
   }
 }
