@@ -9,6 +9,7 @@ services:
       PORT: 3000
       # memory consumption; RATE_STORE=redis
       RATE_STORE: ${RATE_STORE:-memory}
+      JWT_SECRET: ${JWT_SECRET:-please-change-me}
       REDIS_URL: redis://redis:6379
     depends_on:
       redis:

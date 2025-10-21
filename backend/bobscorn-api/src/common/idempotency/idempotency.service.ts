@@ -12,9 +12,7 @@ function isIdempotencyEntry(x: unknown): x is IdempotencyEntry {
   if (x === null || typeof x !== 'object') return false;
   const r = x as Record<string, unknown>;
   return (
-    typeof r.status === 'number' &&
-    'body' in r && // puede ser cualquier cosa (unknown)
-    typeof r.at === 'number'
+    typeof r.status === 'number' && 'body' in r && typeof r.at === 'number'
   );
 }
 

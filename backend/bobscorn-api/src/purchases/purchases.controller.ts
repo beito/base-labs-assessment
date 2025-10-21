@@ -48,6 +48,9 @@ export class PurchasesController {
     const fromHeader = readHeader(req, 'x-client-id');
     if (fromHeader) return fromHeader;
 
+    const fromQuery = readQueryString(req, ['clientId']);
+    if (fromQuery) return fromQuery;
+
     const fromBody = readBodyString(req, ['x-client-id', 'clientId']);
     if (fromBody) return fromBody;
 
@@ -108,7 +111,7 @@ export class PurchasesController {
   async buy(@Req() req: Request, @Res() res: Response) {
     const idem = this.getIdempotencyKey(req);
     if (idem) {
-      const cached = this.idempotency.get(idem);
+      const cached = await this.idempotency.get(idem);
       if (cached) return res.status(cached.status).json(cached.body);
     }
 
@@ -133,8 +136,9 @@ export class PurchasesController {
           retryAfterSeconds,
         };
 
-    if (idem && status === HttpStatus.OK)
-      this.idempotency.set(idem, status, body);
+    if (idem && status === HttpStatus.OK) {
+      await this.idempotency.set(idem, status, body);
+    }
 
     return res.status(status).json(body);
   }
@@ -168,6 +172,17 @@ function readBodyString(req: Request, keys: string[]): string | undefined {
       const s = v.trim();
       if (s) return s;
     }
+  }
+  return undefined;
+}
+
+function readQueryString(req: Request, keys: string[]): string | undefined {
+  const q: unknown = (req as Request & { query?: unknown }).query;
+  if (q === null || typeof q !== 'object') return undefined;
+  const rec = q as Record<string, unknown>;
+  for (const k of keys) {
+    const v = rec[k];
+    if (typeof v === 'string' && v.trim()) return v.trim();
   }
   return undefined;
 }
