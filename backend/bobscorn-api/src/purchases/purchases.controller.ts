@@ -22,6 +22,11 @@ import type { ClientBucket } from '../rate-limit/domain/store.interface';
 
 @ApiTags('Purchases')
 @ApiHeader({
+  name: 'Authorization',
+  required: false,
+  description: 'Bearer <JWT from /auth/login>; if present, used as client id',
+})
+@ApiHeader({
   name: 'x-client-id',
   required: true,
   description: 'Unique client identifier (preferred)',
@@ -45,12 +50,16 @@ export class PurchasesController {
   ) {}
 
   private getClientId(req: Request): string {
+    if (typeof (req as Request & { userId?: string }).userId === 'string') {
+      const t = (req as Request & { userId?: string }).userId!.trim();
+      if (t) return t;
+    }
+
     const fromHeader = readHeader(req, 'x-client-id');
     if (fromHeader) return fromHeader;
 
-    const fromQuery = readQueryString(req, ['clientId']);
+    const fromQuery = readQueryString?.(req, ['clientId']);
     if (fromQuery) return fromQuery;
-
     const fromBody = readBodyString(req, ['x-client-id', 'clientId']);
     if (fromBody) return fromBody;
 
